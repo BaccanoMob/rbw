@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+env:
+  GH_REPO: ${{ github.repository }}
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            brew install bash
+          elif [ "$RUNNER_OS" != "Linux" ]; then
+            echo "$RUNNER_OS not supported"
+            exit 1
+          fi
+        shell: bash
+
+      - uses: actions/checkout@v4
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          changelog: CHANGELOG.md
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-assets:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            archive: rbw_$tag_linux_arm64
+            os: ubuntu-latest
+          - target: aarch64-apple-darwin
+            archive: rbw_$tag_darwin_arm64
+            os: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            archive: rbw_$tag_linux_amd64
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            archive: rbw_$tag_darwin_amd64
+            os: macos-latest
+          - target: universal-apple-darwin
+            archive: rbw_$tag_darwin
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Install dependencies
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            brew install bash
+          elif [ "$RUNNER_OS" != "Linux" ]; then
+            echo "$RUNNER_OS not supported"
+            exit 1
+          fi
+        shell: bash
+
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: rbw,rbw-agent
+          target: ${{ matrix.target }}
+          archive: ${{ matrix.archive }}
+          token: ${{ secrets.GITHUB_TOKEN }}
